@@ -3,6 +3,7 @@ import { DraggableCore } from 'react-draggable';
 import styled from 'styled-components';
 import clamp from 'lodash/clamp';
 import useDimensions from './hooks/useDimensions';
+import formatTimestamp from './utils/formatTimestamp';
 
 const MIN_DURATION = 1; // second
 
@@ -23,7 +24,6 @@ const TrimSection = styled.div`
   border-top-width: 3px;
   border-bottom-width: 3px;
   border-radius: 4px;
-  cursor: move;
 `;
 
 const Handle = styled.div`
@@ -34,11 +34,11 @@ const Handle = styled.div`
   background-color: #0f87ff;
   cursor: ew-resize;
 
-  &[data-handle="left"] {
+  &[data-action="trim-left"] {
     left: 0;
   }
 
-  &[data-handle="right"] {
+  &[data-action="trim-right"] {
     right: 0;
   }
 
@@ -54,6 +54,35 @@ const Handle = styled.div`
     height: 60%;
     border-left: 1px solid #ffffff;
     border-right: 1px solid #ffffff;
+  }
+`;
+
+const Tooltip = styled.div`
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 5px;
+  transform: translateX(-50%);
+  font-size: 10px;
+  background-color: #222222;
+  color: #ffffff;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+  user-select: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+
+  &::before {
+    content:'';
+    position: absolute;
+    width:0;
+    height:0;
+    top: 100%;
+    right: 0;
+    left: 0;
+    margin: auto;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid #222222;
   }
 `;
 
@@ -81,8 +110,7 @@ function TrimBar(props) {
   const [pxPerSec, setPxPerSec] = useState(0);
   const [trimLeft, setTrimLeft] = useState(0);
   const [trimWidth, setTrimWidth] = useState(0);
-  const handle = useRef('');
-
+  const [action, setAction] = useState('');
 
   useEffect(() => {
     const pxPerSec = totalWidth / totalDuration;
@@ -92,29 +120,22 @@ function TrimBar(props) {
   }, [trimStart, trimDuration, totalWidth, totalDuration]);
 
   const handleStart = (event) => {
-    handle.current = event.target.dataset.handle;
+    setAction(event.target.dataset.action);
   }
 
   const handleDrag = (event, data) => {
     const { deltaX } = data;
 
-    if (handle.current === 'move') {
-      move(deltaX);
-    }
-    if (handle.current === 'left') {
+    if (action === 'trim-left') {
       leftTrim(deltaX);
     }
-    if (handle.current === 'right') {
+    if (action === 'trim-right') {
       rightTrim(deltaX);
     }
   }
 
   const handleStop = () => {
-    handle.current = '';
-  }
-
-  const move = (deltaX) => {
-    setTrimLeft(clamp(trimLeft + deltaX, 0, totalWidth - trimWidth));
+    setAction('');
   }
 
   const leftTrim = (deltaX) => {
@@ -141,12 +162,21 @@ function TrimBar(props) {
           onDrag={handleDrag}
           onStop={handleStop}
         >
-          <TrimSection
-            data-handle="move"
-            style={{ left: trimLeft, width: trimWidth }}
-          >
-            <Handle data-handle="left" />
-            <Handle data-handle="right" />
+          <TrimSection className="trim-section" style={{ left: trimLeft, width: trimWidth }}>
+            <Handle data-action="trim-left">
+              {action === 'trim-left' && (
+                <Tooltip>
+                  {formatTimestamp(trimLeft / pxPerSec, true)}
+                </Tooltip>
+              )}
+            </Handle>
+            <Handle data-action="trim-right">
+              {action === 'trim-right' && (
+                <Tooltip>
+                  {formatTimestamp((trimLeft + trimWidth) / pxPerSec, true)}
+                </Tooltip>
+              )}
+            </Handle>
           </TrimSection>
         </DraggableCore>
         <RightOverlay style={{ width: totalWidth - trimLeft - trimWidth + 4 }} />
