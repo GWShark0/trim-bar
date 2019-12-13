@@ -16,6 +16,7 @@ const Container = styled.div`
 
 const TrimSection = styled.div`
   position: absolute;
+  z-index: 1;
   top: 0;
   height: 100%;
   border: 0 solid #0f87ff;
@@ -56,9 +57,23 @@ const Handle = styled.div`
   }
 `;
 
-// const pxToSec = (pixels) => pixels * totalDuration / totalWidth;
+const LeftOverlay = styled.div`
+  position: absolute;
+  left: 0;
+  height: 100%;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.3);
+`;
 
-
+const RightOverlay = styled.div`
+  position: absolute;
+  right: 0;
+  height: 100%;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.3);
+`;
 
 function TrimBar(props) {
   const { trimStart, trimDuration, totalDuration } = props;
@@ -120,6 +135,7 @@ function TrimBar(props) {
   return (
     <div>
       <Container ref={containerRef}>
+        <LeftOverlay style={{ width: trimLeft + 4 }} />
         <DraggableCore
           onStart={handleStart}
           onDrag={handleDrag}
@@ -133,6 +149,7 @@ function TrimBar(props) {
             <Handle data-handle="right" />
           </TrimSection>
         </DraggableCore>
+        <RightOverlay style={{ width: totalWidth - trimLeft - trimWidth + 4 }} />
       </Container>
       <pre>
         <table>
