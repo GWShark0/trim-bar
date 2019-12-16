@@ -4,6 +4,8 @@ import styled from 'styled-components';
 import clamp from 'lodash/clamp';
 import useDimensions from './hooks/useDimensions';
 import formatTimestamp from './utils/formatTimestamp';
+import PlayPauseButton from './PlayPauseButton';
+import NativeMediaControls from './NativeMediaControls';
 
 const MIN_DURATION = 1; // second
 
@@ -17,13 +19,12 @@ const Container = styled.div`
 
 const TrimSection = styled.div`
   position: absolute;
-  z-index: 1;
   top: 0;
   height: 100%;
   border: 0 solid #0f87ff;
   border-top-width: 3px;
   border-bottom-width: 3px;
-  border-radius: 4px;
+  pointer-events: none;
 `;
 
 const Handle = styled.div`
@@ -32,14 +33,16 @@ const Handle = styled.div`
   width: 11px;
   height: 100%;
   background-color: #0f87ff;
-  cursor: ew-resize;
 
   &[data-action="trim-left"] {
-    left: 0;
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+    transform: translateX(-100%);
   }
 
   &[data-action="trim-right"] {
-    right: 0;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
   }
 
   &::before {
@@ -93,6 +96,7 @@ const LeftOverlay = styled.div`
   border-top-left-radius: 4px;
   border-bottom-left-radius: 4px;
   background-color: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
 `;
 
 const RightOverlay = styled.div`
@@ -102,15 +106,59 @@ const RightOverlay = styled.div`
   border-top-right-radius: 4px;
   border-bottom-right-radius: 4px;
   background-color: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
 `;
 
+const PlayHead = styled.div`
+  background-color: red;
+  width: 1px;
+  height: 100%;
+  position: absolute;
+  top: 0;
+`;
+
+
 function TrimBar(props) {
-  const { trimStart, trimDuration, totalDuration } = props;
+  const { src, trimStart, trimDuration, totalDuration } = props;
   const [containerRef, { width: totalWidth = 0 }] = useDimensions();
   const [pxPerSec, setPxPerSec] = useState(0);
   const [trimLeft, setTrimLeft] = useState(0);
   const [trimWidth, setTrimWidth] = useState(0);
   const [action, setAction] = useState('');
+
+  const [showPlayHead, setShowPlayHead] = useState(false);
+
+
+  const [playHeadPosition, setPlayHeadPosition] = useState(100);
+
+  const mediaRef = useRef(null);
+  const mediaControls = useRef(null);
+
+  const [loading, setLoading] = useState(true);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const source = await NativeMediaControls.preloadVideoSource(src);
+        await NativeMediaControls.preloadMediaElement(mediaRef.current, source);
+        mediaControls.current = new NativeMediaControls(mediaRef.current);
+        setLoading(false);
+      } catch (error) {
+        console.error('TrimModal could not load media', src);
+      }
+    })();
+  }, [src]);
+
+  const handlePlayPause = () => {
+    setPlaying(!playing);
+
+    if (playing) {
+      mediaControls.current.pause();
+    } else {
+      mediaControls.current.play();
+    }
+  };
 
   useEffect(() => {
     const pxPerSec = totalWidth / totalDuration;
@@ -119,16 +167,42 @@ function TrimBar(props) {
     setTrimWidth(trimDuration * pxPerSec);
   }, [trimStart, trimDuration, totalWidth, totalDuration]);
 
-  const handleStart = (event) => {
-    setAction(event.target.dataset.action);
+  const handleStart = (event, data) => {
+    const { action } = event.target.dataset;
+    const { node, x } = data;
+
+    if (action === 'seek') {
+      const position = x - node.offsetLeft;
+      setPlayHeadPosition(position);
+      setShowPlayHead(true);
+
+      if (position < trimLeft) {
+        leftTrim(position - trimLeft);
+      }
+
+      if (position > trimLeft + trimWidth) {
+        rightTrim(position - trimLeft - trimWidth + 1);
+      }
+    }
+
+    if (action === 'trim-left' || action === 'trim-right') {
+      setShowPlayHead(false);
+    }
+
+    setAction(action);
   }
 
   const handleDrag = (event, data) => {
     const { deltaX } = data;
 
+    if (action === 'seek') {
+      seek(deltaX)
+    }
+
     if (action === 'trim-left') {
       leftTrim(deltaX);
     }
+
     if (action === 'trim-right') {
       rightTrim(deltaX);
     }
@@ -136,6 +210,10 @@ function TrimBar(props) {
 
   const handleStop = () => {
     setAction('');
+  }
+
+  const seek = (deltaX) => {
+    setPlayHeadPosition(clamp(playHeadPosition + deltaX, 0, totalWidth));
   }
 
   const leftTrim = (deltaX) => {
@@ -155,32 +233,40 @@ function TrimBar(props) {
 
   return (
     <div>
-      <Container ref={containerRef}>
-        <LeftOverlay style={{ width: trimLeft + 4 }} />
-        <DraggableCore
-          onStart={handleStart}
-          onDrag={handleDrag}
-          onStop={handleStop}
-        >
-          <TrimSection className="trim-section" style={{ left: trimLeft, width: trimWidth }}>
-            <Handle data-action="trim-left">
-              {action === 'trim-left' && (
-                <Tooltip>
-                  {formatTimestamp(trimLeft / pxPerSec, true)}
-                </Tooltip>
-              )}
-            </Handle>
-            <Handle data-action="trim-right">
-              {action === 'trim-right' && (
-                <Tooltip>
-                  {formatTimestamp((trimLeft + trimWidth) / pxPerSec, true)}
-                </Tooltip>
-              )}
-            </Handle>
-          </TrimSection>
-        </DraggableCore>
-        <RightOverlay style={{ width: totalWidth - trimLeft - trimWidth + 4 }} />
-      </Container>
+      <div>
+        <video ref={mediaRef} width="100%" crossOrigin="anonymous" />
+      </div>
+      <PlayPauseButton
+        isLoading={loading}
+        isPlaying={playing}
+        onClick={handlePlayPause}
+      />
+      <DraggableCore
+        onStart={handleStart}
+        onDrag={handleDrag}
+        onStop={handleStop}
+      >
+        <Container ref={containerRef} data-action="seek">
+          {showPlayHead && <PlayHead style={{ left: playHeadPosition }} />}
+          <LeftOverlay style={{ width: trimLeft }} />
+          <RightOverlay style={{ width: totalWidth - trimLeft - trimWidth }} />
+          <Handle style={{ left: trimLeft }} data-action="trim-left">
+            {action === 'trim-left' && (
+              <Tooltip>
+                {formatTimestamp(trimLeft / pxPerSec, true)}
+              </Tooltip>
+            )}
+          </Handle>
+          <TrimSection style={{ left: trimLeft, width: trimWidth }} />
+          <Handle style={{ left: trimLeft + trimWidth }} data-action="trim-right">
+            {action === 'trim-right' && (
+              <Tooltip>
+                {formatTimestamp((trimLeft + trimWidth) / pxPerSec, true)}
+              </Tooltip>
+            )}
+          </Handle>
+        </Container>
+      </DraggableCore>
       <pre>
         <table>
           <tbody>

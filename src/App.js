@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import TrimBar from './TrimBar';
+import oranges from './oranges.mp4'
 
 const Container = styled.div`
   padding: 2rem;
@@ -15,6 +16,7 @@ function App() {
     <Container>
       <Wrapper>
         <TrimBar
+          src={oranges}
           trimStart={1}
           trimDuration={4}
           totalDuration={10}
